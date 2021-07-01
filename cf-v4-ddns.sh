@@ -1,17 +1,22 @@
-#!/usr/bin/env bash
+#!/bin/sh
 set -o errexit
 set -o nounset
 set -o pipefail
+
+#set log files path
+LOGHOME=/var/log/cf
+mkdir -p $LOGHOME
 
 # Automatically update your CloudFlare DNS record to the IP, Dynamic DNS
 # Can retrieve cloudflare Domain id and list zone's, because, lazy
 
 # Place at:
-# curl https://raw.githubusercontent.com/yulewang/cloudflare-api-v4-ddns/master/cf-v4-ddns.sh > /usr/local/bin/cf-ddns.sh && chmod +x /usr/local/bin/cf-ddns.sh
+# curl https://raw.githubusercontent.com/yulewang/cloudflare-api-v4-ddns/master/cf-v4-ddns.sh > /usr/local/bin/cf-v4-ddns.sh && chmod +x /usr/local/bin/cf-v4-ddns.sh
 # run `crontab -e` and add next line:
-# */1 * * * * /usr/local/bin/cf-ddns.sh >/dev/null 2>&1
+# */1 * * * * /usr/local/bin/cf-v4-ddns.sh >/dev/null 2>&1
+# */1 * * * * /usr/local/bin/cf-v4-ddns.sh >/var/log/cf/cf-exec.log 2>&1
 # or you need log:
-# */1 * * * * /usr/local/bin/cf-ddns.sh >> /var/log/cf-ddns.log 2>&1
+# */1 * * * * /usr/local/bin/cf-v4-ddns.sh >> /var/log/cf/cf-ddns.log 2>&1
 
 
 # Usage:
@@ -97,7 +102,7 @@ fi
 
 # Get current and old WAN ip
 WAN_IP=`curl -s ${WANIPSITE}`
-WAN_IP_FILE=$HOME/.cf-wan_ip_$CFRECORD_NAME.txt
+WAN_IP_FILE=$LOGHOME/.cf-wan_ip_$CFRECORD_NAME.txt
 if [ -f $WAN_IP_FILE ]; then
   OLD_WAN_IP=`cat $WAN_IP_FILE`
 else
@@ -112,7 +117,7 @@ if [ "$WAN_IP" = "$OLD_WAN_IP" ] && [ "$FORCE" = false ]; then
 fi
 
 # Get zone_identifier & record_identifier
-ID_FILE=$HOME/.cf-id_$CFRECORD_NAME.txt
+ID_FILE=$LOGHOME/.cf-id_$CFRECORD_NAME.txt
 if [ -f $ID_FILE ] && [ $(wc -l $ID_FILE | cut -d " " -f 1) == 4 ] \
   && [ "$(sed -n '3,1p' "$ID_FILE")" == "$CFZONE_NAME" ] \
   && [ "$(sed -n '4,1p' "$ID_FILE")" == "$CFRECORD_NAME" ]; then
@@ -120,8 +125,8 @@ if [ -f $ID_FILE ] && [ $(wc -l $ID_FILE | cut -d " " -f 1) == 4 ] \
     CFRECORD_ID=$(sed -n '2,1p' "$ID_FILE")
 else
     echo "Updating zone_identifier & record_identifier"
-    CFZONE_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$CFZONE_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json" | grep -Po '(?<="id":")[^"]*' | head -1 )
-    CFRECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CFZONE_ID/dns_records?name=$CFRECORD_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json"  | grep -Po '(?<="id":")[^"]*' | head -1 )
+    CFZONE_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$CFZONE_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json" | grep -Eo '("id":")([^"]*)'|awk -F"\":\"" '{print $2}' | head -1 )
+    CFRECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CFZONE_ID/dns_records?name=$CFRECORD_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json"  | grep -Eo '("id":")([^"]*)'|awk -F"\":\"" '{print $2}' | head -1 )
     echo "$CFZONE_ID" > $ID_FILE
     echo "$CFRECORD_ID" >> $ID_FILE
     echo "$CFZONE_NAME" >> $ID_FILE
